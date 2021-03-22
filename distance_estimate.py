@@ -19,7 +19,7 @@ drone pitch (degrees)
 import fractions
 import math
 
-with open('input') as input_file:
+with open('inputs/4b10m') as input_file:
   aspect_ratio: float = float(fractions.Fraction(input_file.readline()))
   fov: float = math.radians(float(input_file.readline()))
   H: float = float(input_file.readline())
@@ -34,3 +34,4 @@ horizon = (H / 2) * (1 - math.tan(pitch) * lens_scaling)
 scaled_height = lens_scaling * (H / 2) / (h - horizon)
 distance = Hc * scaled_height / (math.cos(pitch) ** 2) - Hc * math.tan(pitch)
 print(f'Distance: {distance}')
+print(f'Horizon: {horizon}')
