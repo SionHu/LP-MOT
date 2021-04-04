@@ -1,0 +1,87 @@
+{   
+    "size": [1280, 720],
+
+    "video_io": {
+        "camera_size": [1920, 1080],
+        "camera_fps": 30,
+        "buffer_size": 10
+    },
+
+    "mot": {
+        "detector_type": "YOLO",
+        "detector_frame_skip": 5,
+
+        "ssd_detector": {
+            "model": "SSDInceptionV2",
+            "class_ids": [1],
+            "tile_overlap": 0.25,
+            "tiling_grid": [4, 2],
+            "conf_thresh": 0.5,
+            "max_area": 130000,
+            "merge_thresh": 0.6
+        },
+        "yolo_detector": {
+            "model": "YOLOv4",
+            "class_ids": [1],
+            "conf_thresh": 0.25,
+            "max_area": 800000,
+            "nms_thresh": 0.5
+        },
+        "public_detector": {
+            "sequence": "eval/data/MOT17-04",
+            "conf_thresh": 0.5,
+            "max_area": 800000
+        },
+        "feature_extractor": {
+            "model": "OSNet025",
+            "batch_size": 16
+        },
+
+        "multi_tracker": {
+            "max_age": 7,
+            "age_factor": 2,
+            "motion_weight": 0.02,
+            "max_feat_cost": 0.9,
+            "max_reid_cost": 0.6,
+            "iou_thresh": 0.4,
+            "duplicate_iou": 0.8,
+            "conf_thresh": 0.5,
+            "lost_buf_size": 50,
+
+            "kalman_filter": {
+                "std_factor_acc": 2.25,
+                "std_offset_acc": 78.5,
+                "std_factor_det": [0.08, 0.08],
+                "std_factor_flow": [0.14, 0.14],
+                "min_std_det": [4.0, 4.0],
+                "min_std_flow": [5.0, 5.0],
+                "init_pos_weight": 5,
+                "init_vel_weight": 10,
+                "vel_coupling": 0.6,
+                "vel_half_life": 2
+            },
+
+            "flow": {
+                "bg_feat_scale_factor": [0.1, 0.1],
+                "opt_flow_scale_factor": [0.5, 0.5],
+                "feature_density": 0.005,
+                "feat_dist_factor": 0.06,
+                "ransac_max_iter": 500,
+                "ransac_conf": 0.99,
+                "max_error": 100,
+                "inlier_thresh": 4,
+                "bg_feat_thresh": 15,
+                "target_feat_params": {
+                    "maxCorners": 1000,
+                    "qualityLevel": 0.06,
+                    "blockSize": 3
+                },
+                "opt_flow_params": {
+                    "winSize": [5, 5],
+                    "maxLevel": 5,
+                    "criteria": [3, 10, 0.03]
+                }
+            }
+        }
+    }
+}
