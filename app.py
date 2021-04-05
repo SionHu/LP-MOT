@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-
+import collections
 from pathlib import Path
 import argparse
 import logging
 import time
 import json
 import cv2
+import csv
 
 import fastmot
 
@@ -25,7 +26,34 @@ def main():
                         help='output a MOT Challenge format log (e.g. eval/results/mot17-04.txt)')
     parser.add_argument('-g', '--gui', action='store_true', help='enable display')
     parser.add_argument('-v', '--verbose', action='store_true', help='verbose output for debugging')
+    parser.add_argument('-f', '--flight_log', required=True, help='Flight log in csv\n')
     args = parser.parse_args()
+
+    # Read video input: e.g. 2021-03-13-10-57-32-431.mp4
+    sMinSec = "-".join(args.input_uri[:-4].split('-')[4:6])
+    sMillsec = " ".join(args.input_uri[:-4].split('-')[6:8])+'00'
+    k = int(int(sMillsec)/10000)
+
+    # Read and store flight logs: e.g. Mar-13th-2021-10-57AM-Flight-Airdata.csv
+    flogs = collections.OrderedDict() # key is millisecond, value is OrderedDict([(k, v), ..., (k, v)])
+    with open(args.flight_log, mode='r', encoding='utf-8-sig') as csvfile:
+        reader = csv.DictReader(csvfile)
+        i, j, boo = 0, 0, False
+        for row in reader:
+            # key is stored in format min-sec-millisecond e.g. 58-41-88600
+            milliSec = row['time(millisecond)']
+            minSec =  row['datetime(utc)'].split(':')[1:3]
+            minSecMill = f'{minSec[0]}-{minSec[1]}-{milliSec}'
+            if i >= k-1 and boo:
+                flogs[minSecMill] = row
+            if sMinSec in minSecMill:
+                boo = True
+                i += 1
+            elif boo:
+                flogs[minSecMill] = row
+
+        # print(flogs['57-32-19200'])
+
 
     # set up logging
     logging.basicConfig(format='[%(levelname)s] %(message)s')
@@ -43,7 +71,7 @@ def main():
 
     if args.mot:
         draw = args.gui or args.output_uri is not None
-        mot = fastmot.MOT(config['size'], stream.capture_dt, config['mot'],
+        mot = fastmot.MOT(config['size'], stream.capture_dt, config['mot'], flogs, stream.fps, sMillsec,
                           draw=draw, verbose=args.verbose)
         if args.log is not None:
             Path(args.log).parent.mkdir(parents=True, exist_ok=True)
@@ -62,6 +90,8 @@ def main():
                 break
 
             if args.mot:
+
+
                 mot.step(frame)
                 if log is not None:
                     for track in mot.visible_tracks:

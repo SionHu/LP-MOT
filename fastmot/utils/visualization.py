@@ -7,15 +7,15 @@ GOLDEN_RATIO = 0.618033988749895
 
 def draw_tracks(frame, tracks, show_flow=False, show_cov=False):
     for track in tracks:
-        draw_bbox(frame, track.tlbr, get_color(track.trk_id), 2, track.dist, str(track.trk_id))
+        draw_bbox(frame, track.tlbr, get_color(track.trk_id), 2, .0, str(track.trk_id))
         if show_flow:
             draw_feature_match(frame, track.prev_keypoints, track.keypoints, (0, 255, 255))
         if show_cov:
             draw_covariance(frame, track.tlbr, track.state[1])
 
-def draw_detections(frame, detections):
+def draw_detections(frame, detections, dist):
     for det in detections:
-        draw_bbox(frame, det.tlbr, (255, 255, 255), 1, det.dist)
+        draw_bbox(frame, det.tlbr, (255, 255, 255), 1, dist)
 
 
 def draw_flow_bboxes(frame, tracker):
@@ -50,10 +50,8 @@ def draw_bbox(frame, tlbr, color, thickness, distance, text=None):
         (text_width, text_height), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_DUPLEX, 0.5, 1)
         cv2.rectangle(frame, tl, (tl[0] + text_width - 1, tl[1] + text_height - 1),
                       color, cv2.FILLED)
-        # print(text+str(distance))
         cv2.putText(frame, text+str(distance), (tl[0], tl[1] + text_height - 1), cv2.FONT_HERSHEY_DUPLEX,
                     0.5, 0, 1, cv2.LINE_AA)
-
 
 
 def draw_feature_match(frame, prev_pts, cur_pts, color):

@@ -5,13 +5,13 @@ from .utils.rect import get_center
 
 
 class Track:
-    def __init__(self, frame_id, trk_id, tlbr, state, label, dist):
+    def __init__(self, frame_id, trk_id, tlbr, state, label):
         self.start_frame = frame_id
         self.trk_id = trk_id
         self.tlbr = tlbr
         self.state = state
         self.label = label
-        self.dist = dist
+        # self.dist = dist
 
         self.age = 0
         self.hits = 0

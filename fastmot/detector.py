@@ -10,13 +10,12 @@ from .utils import InferenceBackend
 from .utils.rect import as_rect, to_tlbr, get_size, area
 from .utils.rect import union, crop, multi_crop, iom, diou_nms
 
-import fractions, math
-
 DET_DTYPE = np.dtype(
     [('tlbr', float, 4),
      ('label', int),
      ('conf', float),
-     ('dist', float)],
+     # ('dist', float)
+    ],
     align=True
 )
 
@@ -172,29 +171,6 @@ class SSDDetector(Detector):
         keep = np.asarray(list(keep))
         return dets[keep]
 
-@nb.jit(fastmath=True, cache=True)
-def distEstimate(H, h):
-    """
-        H: height of image (pixel)
-        h: lower ordinate from top of the image (pixel)
-    """
-    aspect_ratio: float = 4/3
-    fov: float = math.radians(84)
-
-    Hc: float = 10.60000034
-    gimbal_pitch: float = math.radians(3.1)
-    drone_pitch: float = math.radians(51.7)
-    roll: float = math.radians(0)
-
-    pitch = gimbal_pitch+drone_pitch
-    lens_scaling = math.hypot(1, aspect_ratio) / math.tan(fov / 2)
-    horizon = (H / 2) * (1 - math.tan(pitch) * lens_scaling)
-    # horizon = (H / 2) * (1 - math.sin(pitch/2)*2 * lens_scaling)
-    scaled_height = lens_scaling * (H / 2) / ((h - horizon) * math.cos(roll))
-    distance = Hc * scaled_height / (math.cos(pitch) ** 2) - Hc * math.tan(pitch)
-    print('\ndistance: ', distance)
-
-    return distance
 
 class YoloDetector(Detector):
     def __init__(self, size, config):
@@ -291,11 +267,7 @@ class YoloDetector(Detector):
             label = int(nms_dets[i, 5])
             conf = nms_dets[i, 4] * nms_dets[i, 6]
             if 0 < area(tlbr) <= max_area:
-                dist = 0
-                if label == 1:
-                    h, H = tlbr[3], size[1]
-                    dist = distEstimate(H, h)
-                detections.append((tlbr, label, conf, dist))
+                detections.append((tlbr, label, conf))
         return detections
 
 
