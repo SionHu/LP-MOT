@@ -9,6 +9,3 @@ We popose a method to achivee real-time multi-object tracking on UAV with 3D loc
 
 ## Info about odometry branch
 This branch stores the work using FastMOT and drone sensor data to estimate the distance from the drone to the tracked objects, then estimate their GPS location.
-### Todo:
-- Implement calculations for objects in different regions in the frame.
-- Add numba to all the calculations. It currently slows everything down.
