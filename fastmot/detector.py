@@ -10,12 +10,11 @@ from .utils import InferenceBackend
 from .utils.rect import as_rect, to_tlbr, get_size, area
 from .utils.rect import union, crop, multi_crop, iom, diou_nms
 
+
 DET_DTYPE = np.dtype(
     [('tlbr', float, 4),
      ('label', int),
-     ('conf', float),
-     # ('dist', float)
-    ],
+     ('conf', float)],
     align=True
 )
 
@@ -194,7 +193,6 @@ class YoloDetector(Detector):
         detections = self._filter_dets(det_out, self.upscaled_sz, self.class_ids, self.conf_thresh,
                                        self.nms_thresh, self.max_area, self.bbox_offset)
         detections = np.asarray(detections, dtype=DET_DTYPE).view(np.recarray)
-
         return detections
 
     def _preprocess(self, frame):
@@ -233,7 +231,7 @@ class YoloDetector(Detector):
         out[:] = normalized
 
     @staticmethod
-    # @nb.njit(fastmath=True, cache=True)
+    @nb.njit(fastmath=True, cache=True)
     def _filter_dets(det_out, size, class_ids, conf_thresh, nms_thresh, max_area, offset):
         """
         det_out: a list of 3 tensors, where each tensor

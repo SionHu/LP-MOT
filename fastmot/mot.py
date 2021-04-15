@@ -2,8 +2,6 @@ from enum import Enum
 import logging
 import time
 import cv2
-import numpy as np
-import numba as nb
 
 from .detector import SSDDetector, YoloDetector, PublicDetector
 from .feature_extractor import FeatureExtractor
@@ -14,30 +12,6 @@ from .utils.visualization import draw_flow_bboxes, draw_background_flow
 
 LOGGER = logging.getLogger(__name__)
 
-import fractions, math
-@nb.jit(fastmath=True, cache=True)
-def distEstimate(H, h, Hc, gPitch, dPitch):
-    """
-        H: height of image (pixel)
-        h: lower ordinate from top of the image (pixel)
-    """
-    aspect_ratio: float = 4/3
-    fov: float = math.radians(84)
-
-    # Hc: float = 10.60000034
-    gimbal_pitch: float = math.radians(-gPitch)
-    drone_pitch: float = math.radians(dPitch)
-    roll: float = math.radians(0)
-
-    pitch = gimbal_pitch+drone_pitch
-    lens_scaling = math.hypot(1, aspect_ratio) / math.tan(fov / 2)
-    horizon = (H / 2) * (1 - math.tan(pitch) * lens_scaling)
-    # horizon = (H / 2) * (1 - math.sin(pitch/2)*2 * lens_scaling)
-    scaled_height = lens_scaling * (H / 2) / ((h - horizon) * math.cos(roll))
-    distance = Hc * scaled_height / (math.cos(pitch) ** 2) - Hc * math.tan(pitch)
-    print('\ndistance: ', distance)
-
-    return distance
 
 class DetectorType(Enum):
     SSD = 0
@@ -63,15 +37,12 @@ class MOT:
         Flag to toggle output verbosity.
     """
 
-    def __init__(self, size, capture_dt, config, flogs, fps, sMillsec, draw=False, verbose=False):
+    def __init__(self, size, capture_dt, config, draw=False, verbose=False):
         self.size = size
         self.draw = draw
         self.verbose = verbose
         self.detector_type = DetectorType[config['detector_type']]
         self.detector_frame_skip = config['detector_frame_skip']
-        self.flogs = flogs
-        self.fps = fps
-        self.sMillsec = sMillsec
 
         LOGGER.info('Loading detector model...')
         if self.detector_type == DetectorType.SSD:
@@ -142,28 +113,14 @@ class MOT:
                 self.tracker.track(frame)
                 self.tracker_time += time.perf_counter() - tic
 
-        # TODO: Maybe speeding this part up by turnning dict into list
-        list_i = int(self.frame_count * 10 / self.fps)
-        dict_i = list(self.flogs)[list_i]
-        # print(self.flogs[dict_i])
-
-        for det in detections:
-            if det.label == 1:
-                h, H = det.tlbr[2], self.size[1]
-                row = self.flogs[dict_i]
-                Hc, gPitch, dPitch = (float(row['height_above_takeoff(feet)'])*0.3048,
-                                        float(row['gimbal_pitch(degrees)']), float(row['pitch(degrees)']))
-                print(H, h, Hc, gPitch, dPitch)
-                dist = distEstimate(H, h, Hc, gPitch, dPitch)
-
         if self.draw:
-            self._draw(frame, detections, dist)
+            self._draw(frame, detections)
         self.frame_count += 1
 
     def _draw(self, frame, detections):
         draw_tracks(frame, self.visible_tracks, show_flow=self.verbose)
         if self.verbose:
-            draw_detections(frame, detections, dist)
+            draw_detections(frame, detections)
             draw_flow_bboxes(frame, self.tracker)
             draw_background_flow(frame, self.tracker)
         cv2.putText(frame, f'visible: {len(self.visible_tracks)}', (30, 30),

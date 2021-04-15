@@ -185,7 +185,6 @@ class MultiTracker:
                 self._mark_lost(trk_id)
             else:
                 updated.append(trk_id)
-            # track.dist = det.dist # alwasy update the tracker with the new detection
 
         # reactivate matched lost tracks
         for trk_id, det_id in reid_matches:

@@ -2,32 +2,34 @@ import colorsys
 import numpy as np
 import cv2
 
+
 GOLDEN_RATIO = 0.618033988749895
 
 
 def draw_tracks(frame, tracks, show_flow=False, show_cov=False):
     for track in tracks:
-        draw_bbox(frame, track.tlbr, get_color(track.trk_id), 2, .0, str(track.trk_id))
+        draw_bbox(frame, track.tlbr, get_color(track.trk_id), 2, str(track.trk_id))
         if show_flow:
             draw_feature_match(frame, track.prev_keypoints, track.keypoints, (0, 255, 255))
         if show_cov:
             draw_covariance(frame, track.tlbr, track.state[1])
 
-def draw_detections(frame, detections, dist):
+
+def draw_detections(frame, detections):
     for det in detections:
-        draw_bbox(frame, det.tlbr, (255, 255, 255), 1, dist)
+        draw_bbox(frame, det.tlbr, (255, 255, 255), 1)
 
 
 def draw_flow_bboxes(frame, tracker):
     for tlbr in tracker.flow_bboxes.values():
-        draw_bbox(frame, tlbr, 0, 1, 0)
+        draw_bbox(frame, tlbr, 0, 1)
 
 
 def draw_tiles(frame, detector):
     assert hasattr(detector, 'tiles')
     for tile in detector.tiles:
         tlbr = np.rint(tile * np.tile(detector.scale_factor, 2))
-        draw_bbox(frame, tlbr, 0, 1, 0)
+        draw_bbox(frame, tlbr, 0, 1)
 
 
 def draw_background_flow(frame, tracker):
@@ -42,7 +44,7 @@ def get_color(idx, s=0.8, vmin=0.7):
     return int(255 * b), int(255 * g), int(255 * r)
 
 
-def draw_bbox(frame, tlbr, color, thickness, distance, text=None):
+def draw_bbox(frame, tlbr, color, thickness, text=None):
     tlbr = tlbr.astype(int)
     tl, br = tuple(tlbr[:2]), tuple(tlbr[2:])
     cv2.rectangle(frame, tl, br, color, thickness)
@@ -50,7 +52,7 @@ def draw_bbox(frame, tlbr, color, thickness, distance, text=None):
         (text_width, text_height), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_DUPLEX, 0.5, 1)
         cv2.rectangle(frame, tl, (tl[0] + text_width - 1, tl[1] + text_height - 1),
                       color, cv2.FILLED)
-        cv2.putText(frame, text+str(distance), (tl[0], tl[1] + text_height - 1), cv2.FONT_HERSHEY_DUPLEX,
+        cv2.putText(frame, text, (tl[0], tl[1] + text_height - 1), cv2.FONT_HERSHEY_DUPLEX,
                     0.5, 0, 1, cv2.LINE_AA)
 
 

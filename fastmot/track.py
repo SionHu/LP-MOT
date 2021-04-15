@@ -11,7 +11,6 @@ class Track:
         self.tlbr = tlbr
         self.state = state
         self.label = label
-        # self.dist = dist
 
         self.age = 0
         self.hits = 0

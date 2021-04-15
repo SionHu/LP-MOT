@@ -13,13 +13,13 @@ source ~/.bashrc
 # install pip, numpy, pycuda, tensorflow, cython-bbox
 sudo apt-get update
 sudo apt-get install python3-pip libhdf5-serial-dev hdf5-tools libcanberra-gtk-module
-pip3 install cython
-pip3 install numpy pycuda cython-bbox
-pip3 install --extra-index-url https://developer.download.nvidia.com/compute/redist/jp/v44 -c constraints.txt tensorflow==1.15.2+nv20.4
+sudo -H pip3 install cython
+sudo -H pip3 install numpy pycuda cython-bbox
+sudo -H pip3 install --no-cache-dir --extra-index-url https://developer.download.nvidia.com/compute/redist/jp/v44 tensorflow==1.15.2+nv20.4
 
 # install scipy
 sudo apt-get install libatlas-base-dev gfortran
-pip3 install scipy==1.5.0
+sudo -H pip3 install scipy==1.5.0
 
 # install llvm (This may take a while)
 cd $DIR
