@@ -14,7 +14,8 @@ DET_DTYPE = np.dtype(
     [('tlbr', float, 4),
      ('label', int),
      ('conf', float),
-     # ('dist', float)
+     ('dist', float),
+     ('gps', float, 2),
     ],
     align=True
 )
@@ -255,8 +256,9 @@ class YoloDetector(Detector):
             class_dets = det_out[class_idx]
             class_keep = diou_nms(class_dets[:, :4], class_dets[:, 4], nms_thresh)
             keep.extend(class_idx[class_keep])
-        keep = np.asarray(keep)
+        keep = np.asarray(keep, dtype=np.int32)
         nms_dets = det_out[keep]
+
 
         detections = []
         for i in range(len(nms_dets)):
@@ -267,7 +269,7 @@ class YoloDetector(Detector):
             label = int(nms_dets[i, 5])
             conf = nms_dets[i, 4] * nms_dets[i, 6]
             if 0 < area(tlbr) <= max_area:
-                detections.append((tlbr, label, conf))
+                detections.append((tlbr, label, conf, 0, (0, 0))) # 0 is dist as default
         return detections
 
 

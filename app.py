@@ -37,7 +37,8 @@ def main():
     # Read and store flight logs: e.g. Mar-13th-2021-10-57AM-Flight-Airdata.csv
     flogs = collections.OrderedDict() # key is millisecond, value is OrderedDict([(k, v), ..., (k, v)])
     with open(args.flight_log, mode='r', encoding='utf-8-sig') as csvfile:
-        reader = csv.DictReader(csvfile)
+        names = [i.strip() for i in next(csvfile).split(',')]
+        reader = csv.DictReader(csvfile, names)
         i, j, boo = 0, 0, False
         for row in reader:
             # key is stored in format min-sec-millisecond e.g. 58-41-88600
@@ -90,8 +91,6 @@ def main():
                 break
 
             if args.mot:
-
-
                 mot.step(frame)
                 if log is not None:
                     for track in mot.visible_tracks:

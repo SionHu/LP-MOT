@@ -34,14 +34,15 @@ def main():
     args = parser.parse_args()
 
     # Read video input: e.g. 2021-03-13-10-57-32-431.mp4
-    sMinSec = "-".join(args.video[:-4].split('-')[4:6])
-    sMillsec = " ".join(args.video[:-4].split('-')[6:8])+'00'
+    sMinSec = "-".join(args.input_uri[:-4].split('-')[4:6])
+    sMillsec = " ".join(args.input_uri[:-4].split('-')[6:8])+'00'
     k = int(int(sMillsec)/10000)
 
     # Read and store flight logs: e.g. Mar-13th-2021-10-57AM-Flight-Airdata.csv
-    flogs = {} # key is millisecond, value is OrderedDict([(k, v), ..., (k, v)])
+    flogs = collections.OrderedDict() # key is millisecond, value is OrderedDict([(k, v), ..., (k, v)])
     with open(args.flight_log, mode='r', encoding='utf-8-sig') as csvfile:
-        reader = csv.DictReader(csvfile)
+        names = [i.strip() for i in next(csvfile).split(',')]
+        reader = csv.DictReader(csvfile, names)
         i, j, boo = 0, 0, False
         for row in reader:
             # key is stored in format min-sec-millisecond e.g. 58-41-88600
@@ -56,34 +57,8 @@ def main():
             elif boo:
                 flogs[minSecMill] = row
 
-        print(flogs['57-32-19200'])
+        # print(flogs['57-32-19200'])
 
-
-    # Find the starting row in the flogs
-    # sKeyList = [key for key, value in flogs.items() if sMinSec in key]
-    # sKey = sKeyList[k-1]
-
-    # cap = cv2.VideoCapture(args.video)
-    # fps = cap.get(cv2.CAP_PROP_FPS)
-    #
-    # timestamps = [cap.get(cv2.CAP_PROP_POS_MSEC)]
-    # calc_timestamps = [0.0]
-    # frameCount = []
-    # i = 0
-    # while(cap.isOpened()):
-    #     frame_exists, curr_frame = cap.read()
-    #     if frame_exists:
-    #         timestamps.append(cap.get(cv2.CAP_PROP_POS_MSEC))
-    #         calc_timestamps.append(calc_timestamps[-1] + 1000/fps)
-    #         frameCount.append(i)
-    #         i += 1
-    #     else:
-    #         break
-    #
-    # cap.release()
-    #
-    # for i, (ts, cts) in enumerate(zip(timestamps, calc_timestamps)):
-    #     fMillisec = int(i * 1000 / fps + int(sMillsec)/100)
 
 
 if __name__ == '__main__':

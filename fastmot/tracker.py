@@ -73,7 +73,7 @@ class MultiTracker:
         self.flow.initiate(frame)
         for det in detections:
             state = self.kf.initiate(det.tlbr)
-            new_trk = Track(0, self.next_id, det.tlbr, state, det.label)
+            new_trk = Track(0, self.next_id, det.tlbr, state, det.label, det.dist, det.gps)
             self.tracks[self.next_id] = new_trk
             LOGGER.debug('Detected: %s', new_trk)
             self.next_id += 1
@@ -185,7 +185,9 @@ class MultiTracker:
                 self._mark_lost(trk_id)
             else:
                 updated.append(trk_id)
-            # track.dist = det.dist # alwasy update the tracker with the new detection
+
+            track.dist = det.dist # alwasy update the tracker with the new detection
+            track.gps = det.gps
 
         # reactivate matched lost tracks
         for trk_id, det_id in reid_matches:
@@ -216,7 +218,7 @@ class MultiTracker:
         for det_id in u_det_ids:
             det = detections[det_id]
             state = self.kf.initiate(det.tlbr)
-            new_trk = Track(frame_id, self.next_id, det.tlbr, state, det.label)
+            new_trk = Track(frame_id, self.next_id, det.tlbr, state, det.label, det.dist, det.gps)
             self.tracks[self.next_id] = new_trk
             LOGGER.debug('Detected: %s', new_trk)
             updated.append(self.next_id)
