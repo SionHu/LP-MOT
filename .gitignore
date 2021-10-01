@@ -161,10 +161,12 @@ dmypy.json
 
 # dataset
 VOCdevkit/
+flow/
 
 # vscode stuff
 .vscode/
 
 
 
-# Ignore the models 
+
+# Ignore the models
