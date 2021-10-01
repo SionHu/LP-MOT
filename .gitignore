@@ -164,3 +164,7 @@ VOCdevkit/
 
 # vscode stuff
 .vscode/
+
+
+
+# Ignore the models 
