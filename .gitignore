@@ -161,7 +161,7 @@ dmypy.json
 
 # dataset
 VOCdevkit/
-flow/
+flow/*
 
 # vscode stuff
 .vscode/
