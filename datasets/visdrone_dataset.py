@@ -26,16 +26,16 @@ class VisDroneDataset(Dataset):
     def __len__(self):
         return len(set(self.frames_objects["frame_index"]))
 
-    def __getitem__(self, idx):
+    def __getitem__(self, index):
         '''
         Args:
-            idx (int): frame number
+            index (int): frame number, start from 0
         returns:
             sample (dict):
                 image (skimage): ndarray of frame image
                 item (dict): 
                     sequence (string): folder name of the sequence
-                    frameID (int): frame number == idx
+                    frameID (int): frame number == index
                     gt (list): a list of objects(dict)
                         objects (dict):
                             classID (int): 
@@ -43,11 +43,11 @@ class VisDroneDataset(Dataset):
                             filename (string): image name. 
                     dim (tuple): (h, w, num_channel)
         '''
-        objs = self.frames_objects.loc[self.frames_objects['frame_index'] == idx]
-        img_name = "{}.jpg".format(str(idx).zfill(7))
+        objs = self.frames_objects.loc[self.frames_objects['frame_index'] == index + 1]
+        img_name = "{}.jpg".format(str(index + 1).zfill(7))
         item = dict()
         item['sequence'] = self.root_dir.split("/")[-1]
-        item['frameID'] = idx
+        item['frameID'] = index
         item['gt'] = list()
         for index,row in objs.iterrows():
             obj = dict()

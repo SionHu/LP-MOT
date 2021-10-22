@@ -25,6 +25,9 @@ import datasets
 import networks
 from IPython import embed
 
+def collate_fn(batch):
+    print(len(batch[0]))
+    return tuple(zip(*batch))
 
 class Trainer:
     def __init__(self, options):
@@ -129,13 +132,13 @@ class Trainer:
             self.opt.frame_ids, 4, is_train=True, img_ext=img_ext)
         self.train_loader = DataLoader(
             train_dataset, self.opt.batch_size, True,
-            num_workers=self.opt.num_workers, pin_memory=True, drop_last=True)
+            num_workers=self.opt.num_workers, pin_memory=True, drop_last=True, collate_fn=collate_fn)
         val_dataset = self.dataset(
             self.opt.data_path, val_filenames, self.opt.height, self.opt.width,
             self.opt.frame_ids, 4, is_train=False, img_ext=img_ext)
         self.val_loader = DataLoader(
             val_dataset, self.opt.batch_size, True,
-            num_workers=self.opt.num_workers, pin_memory=True, drop_last=True)
+            num_workers=self.opt.num_workers, pin_memory=True, drop_last=True, collate_fn=collate_fn)
         self.val_iter = iter(self.val_loader)
 
         self.writers = {}
