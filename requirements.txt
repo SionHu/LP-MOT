@@ -1,6 +1,8 @@
 numpy < 1.19
 scipy >= 1.5
 numba == 0.48
-tensorflow < 2.0 
+tensorflow < 2.0
 pycuda
 cython-bbox
+-e git+https://github.com/lhao0301/pytorch-liteflownet3.git@f3dee2e656d2b6ac386eeb5a252dbe1afa518c3c#egg=correlation_cuda&subdirectory=correlation_package
+flowiz # optional for viewing flo files

@@ -1,30 +1,28 @@
-# Copyright Niantic 2019. Patent Pending. All rights reserved.
-#
-# This software is licensed under the terms of the Monodepth2 licence
-# which allows for non-commercial use only, the full terms of which are made
-# available in the LICENSE file.
-
 from __future__ import absolute_import, division, print_function
 
 import numpy as np
 import time
+import os
+from glob import glob
+import json
 
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
+from torchvision import transforms
 from tensorboardX import SummaryWriter
 
-import json
-
 from utils import *
-from kitti_utils import *
-from layers import *
-
 import datasets
 import networks
+from networks.LiteFlowNet3 import estimate, read_image, save_flow
+
 from IPython import embed
 
+# Link:
+def collate_fn(batch):
+    return tuple(zip(*batch))
 
 class Trainer:
     def __init__(self, options):
@@ -32,72 +30,27 @@ class Trainer:
         self.log_path = os.path.join(self.opt.log_dir, self.opt.model_name)
 
         # checking height and width are multiples of 32
-        assert self.opt.height % 32 == 0, "'height' must be a multiple of 32"
-        assert self.opt.width % 32 == 0, "'width' must be a multiple of 32"
+
+        # assert self.opt.width % 32 == 0, "'width' must be a multiple of 32"
 
         self.models = {}
         self.parameters_to_train = []
 
         self.device = torch.device("cpu" if self.opt.no_cuda else "cuda")
 
-        self.num_scales = len(self.opt.scales)
-        self.num_input_frames = len(self.opt.frame_ids)
-        self.num_pose_frames = 2 if self.opt.pose_model_input == "pairs" else self.num_input_frames
+        # Store all networks that will be used into self.models
+        self.models["liteflownet3"] = networks.LiteFlowNet3().to(self.device)
+        self.parameters_to_train += list(self.models["liteflownet3"].parameters())
+        self.models["liteflownet3"].load_state_dict(torch.load('/home/hu440/LP-MOT/pytorch-liteflownet3/network-sintel.pytorch'))
 
-        assert self.opt.frame_ids[0] == 0, "frame_ids must start with 0"
+        self.models["resnet"] = networks.ResNet(self.opt.num_layers,
+                                                self.opt.weights_init == "pretrained").to(self.device)
+        self.parameters_to_train += list(self.models["resnet"].parameters())
 
-        self.use_pose_net = not (self.opt.use_stereo and self.opt.frame_ids == [0])
+        self.models["attnet"] = networks.AttNet(num_input_ch=10).to(self.device)
+        self.parameters_to_train += list(self.models["attnet"].parameters())
 
-        if self.opt.use_stereo:
-            self.opt.frame_ids.append("s")
-
-        self.models["encoder"] = networks.ResnetEncoder(
-            self.opt.num_layers, self.opt.weights_init == "pretrained")
-        self.models["encoder"].to(self.device)
-        self.parameters_to_train += list(self.models["encoder"].parameters())
-
-        self.models["depth"] = networks.DepthDecoder(
-            self.models["encoder"].num_ch_enc, self.opt.scales)
-        self.models["depth"].to(self.device)
-        self.parameters_to_train += list(self.models["depth"].parameters())
-
-        if self.use_pose_net:
-            if self.opt.pose_model_type == "separate_resnet":
-                self.models["pose_encoder"] = networks.ResnetEncoder(
-                    self.opt.num_layers,
-                    self.opt.weights_init == "pretrained",
-                    num_input_images=self.num_pose_frames)
-
-                self.models["pose_encoder"].to(self.device)
-                self.parameters_to_train += list(self.models["pose_encoder"].parameters())
-
-                self.models["pose"] = networks.PoseDecoder(
-                    self.models["pose_encoder"].num_ch_enc,
-                    num_input_features=1,
-                    num_frames_to_predict_for=2)
-
-            elif self.opt.pose_model_type == "shared":
-                self.models["pose"] = networks.PoseDecoder(
-                    self.models["encoder"].num_ch_enc, self.num_pose_frames)
-
-            elif self.opt.pose_model_type == "posecnn":
-                self.models["pose"] = networks.PoseCNN(
-                    self.num_input_frames if self.opt.pose_model_input == "all" else 2)
-
-            self.models["pose"].to(self.device)
-            self.parameters_to_train += list(self.models["pose"].parameters())
-
-        if self.opt.predictive_mask:
-            assert self.opt.disable_automasking, \
-                "When using predictive_mask, please disable automasking with --disable_automasking"
-
-            # Our implementation of the predictive masking baseline has the the same architecture
-            # as our depth decoder. We predict a separate mask for each source frame.
-            self.models["predictive_mask"] = networks.DepthDecoder(
-                self.models["encoder"].num_ch_enc, self.opt.scales,
-                num_output_channels=(len(self.opt.frame_ids) - 1))
-            self.models["predictive_mask"].to(self.device)
-            self.parameters_to_train += list(self.models["predictive_mask"].parameters())
+        # TODO: R-FCN or something similar
 
         self.model_optimizer = optim.Adam(self.parameters_to_train, self.opt.learning_rate)
         self.model_lr_scheduler = optim.lr_scheduler.StepLR(
@@ -110,58 +63,52 @@ class Trainer:
         print("Models and tensorboard events files are saved to:\n  ", self.opt.log_dir)
         print("Training is using:\n  ", self.device)
 
-        # data
-        datasets_dict = {"kitti": datasets.KITTIRAWDataset,
-                         "kitti_odom": datasets.KITTIOdomDataset}
+        # Data configuration
+        # TODO: configuration inside self.dataset
+        datasets_dict = {"visdrone": datasets.VisDroneDataset}
         self.dataset = datasets_dict[self.opt.dataset]
 
-        fpath = os.path.join(os.path.dirname(__file__), "splits", self.opt.split, "{}_files.txt")
-
-        train_filenames = readlines(fpath.format("train"))
-        val_filenames = readlines(fpath.format("val"))
-        img_ext = '.png' if self.opt.png else '.jpg'
+        # TODO: The following are for LiteFlowNet3. Change it fit datasets universally
+        visdrone_folders = [name for name in glob(os.path.join(self.opt.data_path, '*'))]
+        train_csv, val_csv, test_csv = list(), list(), list()
+        for folder in visdrone_folders:
+            for txt in glob(os.path.join(folder, 'annotations', '*')):
+                if 'train' in folder:
+                    train_filenames = open(txt).readlines()
+                    train_csv.append(txt)
+                if 'val' in folder:
+                    val_filenames = open(txt).readlines()
+                    val_csv.append(txt)
+                if 'test' in folder:
+                    test_filenames = open(txt).readlines()
 
         num_train_samples = len(train_filenames)
         self.num_total_steps = num_train_samples // self.opt.batch_size * self.opt.num_epochs
 
         train_dataset = self.dataset(
-            self.opt.data_path, train_filenames, self.opt.height, self.opt.width,
-            self.opt.frame_ids, 4, is_train=True, img_ext=img_ext)
+                        csv_files=train_csv,
+                        root_dir=self.opt.data_path+"/VisDrone2019-MOT-train",
+                        transform=transforms.Compose([datasets.Rescale((270, 480)), datasets.ToTensor()]))
+        self.train_dataset = train_dataset
         self.train_loader = DataLoader(
-            train_dataset, self.opt.batch_size, True,
-            num_workers=self.opt.num_workers, pin_memory=True, drop_last=True)
+            train_dataset, self.opt.batch_size, shuffle=False,
+            num_workers=self.opt.num_workers, pin_memory=True, drop_last=True, collate_fn=collate_fn)
+
         val_dataset = self.dataset(
-            self.opt.data_path, val_filenames, self.opt.height, self.opt.width,
-            self.opt.frame_ids, 4, is_train=False, img_ext=img_ext)
+                csv_files=val_csv,
+                root_dir=self.opt.data_path+"/VisDrone2019-MOT-val",
+                transform=transforms.Compose([datasets.Rescale((270, 480)), datasets.ToTensor()])
+            )
+        self.val_dataset = val_dataset
         self.val_loader = DataLoader(
-            val_dataset, self.opt.batch_size, True,
-            num_workers=self.opt.num_workers, pin_memory=True, drop_last=True)
+            val_dataset, self.opt.batch_size, shuffle=False,
+            num_workers=self.opt.num_workers, pin_memory=True, drop_last=True, collate_fn=collate_fn)
         self.val_iter = iter(self.val_loader)
 
         self.writers = {}
         for mode in ["train", "val"]:
             self.writers[mode] = SummaryWriter(os.path.join(self.log_path, mode))
 
-        if not self.opt.no_ssim:
-            self.ssim = SSIM()
-            self.ssim.to(self.device)
-
-        self.backproject_depth = {}
-        self.project_3d = {}
-        for scale in self.opt.scales:
-            h = self.opt.height // (2 ** scale)
-            w = self.opt.width // (2 ** scale)
-
-            self.backproject_depth[scale] = BackprojectDepth(self.opt.batch_size, h, w)
-            self.backproject_depth[scale].to(self.device)
-
-            self.project_3d[scale] = Project3D(self.opt.batch_size, h, w)
-            self.project_3d[scale].to(self.device)
-
-        self.depth_metric_names = [
-            "de/abs_rel", "de/sq_rel", "de/rms", "de/log_rms", "da/a1", "da/a2", "da/a3"]
-
-        print("Using split:\n  ", self.opt.split)
         print("There are {:d} training items and {:d} validation items\n".format(
             len(train_dataset), len(val_dataset)))
 
@@ -195,7 +142,7 @@ class Trainer:
         """
         self.model_lr_scheduler.step()
 
-        print("Training")
+        print(" ==== Training ====")
         self.set_train()
 
         for batch_idx, inputs in enumerate(self.train_loader):
@@ -228,33 +175,54 @@ class Trainer:
     def process_batch(self, inputs):
         """Pass a minibatch through the network and generate images and losses
         """
-        for key, ipt in inputs.items():
-            inputs[key] = ipt.to(self.device)
+        # Send all inputs to device
+        for idx, input in enumerate(inputs):
+            for ipt in input:
+                if idx == 0: # image
+                    ipt = ipt.to(self.device)
+                else: # gt
+                    for key, val in ipt.items():
+                        ipt[key] = val.to(self.device)
 
-        if self.opt.pose_model_type == "shared":
-            # If we are using a shared encoder for both depth and pose (as advocated
-            # in monodepthv1), then all images are fed separately through the depth encoder.
-            all_color_aug = torch.cat([inputs[("color_aug", i, 0)] for i in self.opt.frame_ids])
-            all_features = self.models["encoder"](all_color_aug)
-            all_features = [torch.split(f, self.opt.batch_size) for f in all_features]
+        # TODO: implement the workflow as structured below
+        # LiteFowNet3: 2 images -> optical flow map
+        img1, img2 = inputs[0][0], inputs[0][1]
+        img1_path, img2_path = self.train_dataset.index2file(inputs[1][0]['image_id']), self.train_dataset.index2file(inputs[1][1]['image_id'])
 
-            features = {}
-            for i, k in enumerate(self.opt.frame_ids):
-                features[k] = [f[i] for f in all_features]
+        opt_flow = estimate(self.models['liteflownet3'], img1, img2)
+        save_flow(opt_flow, '/home/hu440/LP-MOT/LP-MOT/flow/out.flo')
 
-            outputs = self.models["depth"](features[0])
-        else:
-            # Otherwise, we only feed the image with frame_id 0 through the depth encoder
-            features = self.models["encoder"](inputs["color_aug", 0, 0])
-            outputs = self.models["depth"](features)
+        # ResNet: 1 image -> feature map
+        with torch.no_grad():
+            # self.models['resnet'] = torch.hub.load('pytorch/vision:v0.10.0', 'resnet18', pretrained=True).to(self.device)
+            res_output = self.models['resnet'](img2.unsqueeze(0).to(self.device))
+        print(f'resnet: {res_output[-1].shape}\toptical flow:{opt_flow.shape}')
+        breakpoint()
 
-        if self.opt.predictive_mask:
-            outputs["predictive_mask"] = self.models["predictive_mask"](features)
+        # AttNet: OF map + feature map -> result map
 
-        if self.use_pose_net:
-            outputs.update(self.predict_poses(inputs, features))
+        # R-FCN: result map -> ROIs
 
-        self.generate_images_pred(inputs, outputs)
+        # Classify: ROIs -> class + motion info (x, y)
+
+        # if self.opt.pose_model_type == "shared":
+        #     # If we are using a shared encoder for both depth and pose (as advocated
+        #     # in monodepthv1), then all images are fed separately through the depth encoder.
+        #     all_color_aug = torch.cat([inputs[("color_aug", i, 0)] for i in self.opt.frame_ids])
+        #     all_features = self.models["encoder"](all_color_aug)
+        #     all_features = [torch.split(f, self.opt.batch_size) for f in all_features]
+        #
+        #     features = {}
+        #     for i, k in enumerate(self.opt.frame_ids):
+        #         features[k] = [f[i] for f in all_features]
+        #
+        #     outputs = self.models["depth"](features[0])
+        # else:
+        #     # Otherwise, we only feed the image with frame_id 0 through the depth encoder
+        #     features = self.models["encoder"](inputs["color_aug", 0, 0])
+        #     outputs = self.models["depth"](features)
+
+        # self.generate_images_pred(inputs, outputs)
         losses = self.compute_losses(inputs, outputs)
 
         return outputs, losses
@@ -410,120 +378,90 @@ class Trainer:
         losses = {}
         total_loss = 0
 
-        for scale in self.opt.scales:
-            loss = 0
-            reprojection_losses = []
-
-            if self.opt.v1_multiscale:
-                source_scale = scale
-            else:
-                source_scale = 0
-
-            disp = outputs[("disp", scale)]
-            color = inputs[("color", 0, scale)]
-            target = inputs[("color", 0, source_scale)]
-
-            for frame_id in self.opt.frame_ids[1:]:
-                pred = outputs[("color", frame_id, scale)]
-                reprojection_losses.append(self.compute_reprojection_loss(pred, target))
-
-            reprojection_losses = torch.cat(reprojection_losses, 1)
-
-            if not self.opt.disable_automasking:
-                identity_reprojection_losses = []
-                for frame_id in self.opt.frame_ids[1:]:
-                    pred = inputs[("color", frame_id, source_scale)]
-                    identity_reprojection_losses.append(
-                        self.compute_reprojection_loss(pred, target))
-
-                identity_reprojection_losses = torch.cat(identity_reprojection_losses, 1)
-
-                if self.opt.avg_reprojection:
-                    identity_reprojection_loss = identity_reprojection_losses.mean(1, keepdim=True)
-                else:
-                    # save both images, and do min all at once below
-                    identity_reprojection_loss = identity_reprojection_losses
-
-            elif self.opt.predictive_mask:
-                # use the predicted mask
-                mask = outputs["predictive_mask"]["disp", scale]
-                if not self.opt.v1_multiscale:
-                    mask = F.interpolate(
-                        mask, [self.opt.height, self.opt.width],
-                        mode="bilinear", align_corners=False)
-
-                reprojection_losses *= mask
+        # for scale in self.opt.scales:
+        #     loss = 0
+        #     reprojection_losses = []
+        #
+        #     if self.opt.v1_multiscale:
+        #         source_scale = scale
+        #     else:
+        #         source_scale = 0
+        #
+        #     disp = outputs[("disp", scale)]
+        #     color = inputs[("color", 0, scale)]
+        #     target = inputs[("color", 0, source_scale)]
+        #
+        #     for frame_id in self.opt.frame_ids[1:]:
+        #         pred = outputs[("color", frame_id, scale)]
+        #         reprojection_losses.append(self.compute_reprojection_loss(pred, target))
+        #
+        #     reprojection_losses = torch.cat(reprojection_losses, 1)
+        #
+        #     if not self.opt.disable_automasking:
+        #         identity_reprojection_losses = []
+        #         for frame_id in self.opt.frame_ids[1:]:
+        #             pred = inputs[("color", frame_id, source_scale)]
+        #             identity_reprojection_losses.append(
+        #                 self.compute_reprojection_loss(pred, target))
+        #
+        #         identity_reprojection_losses = torch.cat(identity_reprojection_losses, 1)
+        #
+        #         if self.opt.avg_reprojection:
+        #             identity_reprojection_loss = identity_reprojection_losses.mean(1, keepdim=True)
+        #         else:
+        #             # save both images, and do min all at once below
+        #             identity_reprojection_loss = identity_reprojection_losses
+        #
+        #     elif self.opt.predictive_mask:
+        #         # use the predicted mask
+        #         mask = outputs["predictive_mask"]["disp", scale]
+        #         if not self.opt.v1_multiscale:
+        #             mask = F.interpolate(
+        #                 mask, [self.opt.height, self.opt.width],
+        #                 mode="bilinear", align_corners=False)
+        #
+        #         reprojection_losses *= mask
 
                 # add a loss pushing mask to 1 (using nn.BCELoss for stability)
-                weighting_loss = 0.2 * nn.BCELoss()(mask, torch.ones(mask.shape).cuda())
-                loss += weighting_loss.mean()
+            #     weighting_loss = 0.2 * nn.BCELoss()(mask, torch.ones(mask.shape).cuda())
+            #     loss += weighting_loss.mean()
+            #
+            # if self.opt.avg_reprojection:
+            #     reprojection_loss = reprojection_losses.mean(1, keepdim=True)
+            # else:
+            #     reprojection_loss = reprojection_losses
+            #
+            # if not self.opt.disable_automasking:
+            #     # add random numbers to break ties
+            #     identity_reprojection_loss += torch.randn(
+            #         identity_reprojection_loss.shape).cuda() * 0.00001
+            #
+            #     combined = torch.cat((identity_reprojection_loss, reprojection_loss), dim=1)
+            # else:
+            #     combined = reprojection_loss
+            #
+            # if combined.shape[1] == 1:
+            #     to_optimise = combined
+            # else:
+            #     to_optimise, idxs = torch.min(combined, dim=1)
+            #
+            # if not self.opt.disable_automasking:
+            #     outputs["identity_selection/{}".format(scale)] = (
+            #         idxs > identity_reprojection_loss.shape[1] - 1).float()
+            #
+            # loss += to_optimise.mean()
+            # mean_disp = disp.mean(2, True).mean(3, True)
+            # norm_disp = disp / (mean_disp + 1e-7)
+            # smooth_loss = get_smooth_loss(norm_disp, color)
+            #
+            # loss += self.opt.disparity_smoothness * smooth_loss / (2 ** scale)
+            # total_loss += loss
+            # losses["loss/{}".format(scale)] = loss
 
-            if self.opt.avg_reprojection:
-                reprojection_loss = reprojection_losses.mean(1, keepdim=True)
-            else:
-                reprojection_loss = reprojection_losses
-
-            if not self.opt.disable_automasking:
-                # add random numbers to break ties
-                identity_reprojection_loss += torch.randn(
-                    identity_reprojection_loss.shape).cuda() * 0.00001
-
-                combined = torch.cat((identity_reprojection_loss, reprojection_loss), dim=1)
-            else:
-                combined = reprojection_loss
-
-            if combined.shape[1] == 1:
-                to_optimise = combined
-            else:
-                to_optimise, idxs = torch.min(combined, dim=1)
-
-            if not self.opt.disable_automasking:
-                outputs["identity_selection/{}".format(scale)] = (
-                    idxs > identity_reprojection_loss.shape[1] - 1).float()
-
-            loss += to_optimise.mean()
-
-            mean_disp = disp.mean(2, True).mean(3, True)
-            norm_disp = disp / (mean_disp + 1e-7)
-            smooth_loss = get_smooth_loss(norm_disp, color)
-
-            loss += self.opt.disparity_smoothness * smooth_loss / (2 ** scale)
-            total_loss += loss
-            losses["loss/{}".format(scale)] = loss
-
-        total_loss /= self.num_scales
-        losses["loss"] = total_loss
-        return losses
-
-    def compute_depth_losses(self, inputs, outputs, losses):
-        """Compute depth metrics, to allow monitoring during training
-
-        This isn't particularly accurate as it averages over the entire batch,
-        so is only used to give an indication of validation performance
-        """
-        depth_pred = outputs[("depth", 0, 0)]
-        depth_pred = torch.clamp(F.interpolate(
-            depth_pred, [375, 1242], mode="bilinear", align_corners=False), 1e-3, 80)
-        depth_pred = depth_pred.detach()
-
-        depth_gt = inputs["depth_gt"]
-        mask = depth_gt > 0
-
-        # garg/eigen crop
-        crop_mask = torch.zeros_like(mask)
-        crop_mask[:, :, 153:371, 44:1197] = 1
-        mask = mask * crop_mask
-
-        depth_gt = depth_gt[mask]
-        depth_pred = depth_pred[mask]
-        depth_pred *= torch.median(depth_gt) / torch.median(depth_pred)
-
-        depth_pred = torch.clamp(depth_pred, min=1e-3, max=80)
-
-        depth_errors = compute_depth_errors(depth_gt, depth_pred)
-
-        for i, metric in enumerate(self.depth_metric_names):
-            losses[metric] = np.array(depth_errors[i].cpu())
+        # total_loss /= self.num_scales
+        # losses["loss"] = total_loss
+        # return losses
+        return None
 
     def log_time(self, batch_idx, duration, loss):
         """Print a logging statement to the terminal
@@ -613,7 +551,7 @@ class Trainer:
 
         for n in self.opt.models_to_load:
             print("Loading {} weights...".format(n))
-            path = os.path.join(self.opt.load_weights_folder, "{}.pth".format(n))
+            path = os.path.join(self.opt.load_weights_folder, "network-sintel.pytorch")
             model_dict = self.models[n].state_dict()
             pretrained_dict = torch.load(path)
             pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
