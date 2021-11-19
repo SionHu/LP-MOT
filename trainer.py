@@ -20,8 +20,13 @@ from networks.LiteFlowNet3 import estimate, read_image, save_flow
 
 from IPython import embed
 
+<<<<<<< HEAD
 # Link:
 def collate_fn(batch):
+=======
+def collate_fn(batch):
+    print(len(batch[0]))
+>>>>>>> 180a2772bbbdca90a7b03583698d6c4bd3cc1c1c
     return tuple(zip(*batch))
 
 class Trainer:
@@ -91,9 +96,14 @@ class Trainer:
                         transform=transforms.Compose([datasets.Rescale((270, 480)), datasets.ToTensor()]))
         self.train_dataset = train_dataset
         self.train_loader = DataLoader(
+<<<<<<< HEAD
             train_dataset, self.opt.batch_size, shuffle=False,
             num_workers=self.opt.num_workers, pin_memory=True, drop_last=True, collate_fn=collate_fn)
 
+=======
+            train_dataset, self.opt.batch_size, True,
+            num_workers=self.opt.num_workers, pin_memory=True, drop_last=True, collate_fn=collate_fn)
+>>>>>>> 180a2772bbbdca90a7b03583698d6c4bd3cc1c1c
         val_dataset = self.dataset(
                 csv_files=val_csv,
                 root_dir=self.opt.data_path+"/VisDrone2019-MOT-val",
@@ -101,7 +111,11 @@ class Trainer:
             )
         self.val_dataset = val_dataset
         self.val_loader = DataLoader(
+<<<<<<< HEAD
             val_dataset, self.opt.batch_size, shuffle=False,
+=======
+            val_dataset, self.opt.batch_size, True,
+>>>>>>> 180a2772bbbdca90a7b03583698d6c4bd3cc1c1c
             num_workers=self.opt.num_workers, pin_memory=True, drop_last=True, collate_fn=collate_fn)
         self.val_iter = iter(self.val_loader)
 

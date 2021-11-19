@@ -47,9 +47,10 @@ class VisDroneDataset(Dataset):
         frame = index - self.seq_range[s][0] + 1
         return seq, frame
 
-    def __getitem__(self, idx):
+    def __getitem__(self, index):
         '''
         Args:
+<<<<<<< HEAD
             idx (int):  unique id of the frame
         returns:
             tuple:
@@ -86,6 +87,28 @@ class VisDroneDataset(Dataset):
         boxes = list()
         class_id = list()
 
+=======
+            index (int): frame number, start from 0
+        returns:
+            sample (dict):
+                image (skimage): ndarray of frame image
+                item (dict): 
+                    sequence (string): folder name of the sequence
+                    frameID (int): frame number == index
+                    gt (list): a list of objects(dict)
+                        objects (dict):
+                            classID (int): 
+                            bbox (list): ["bbox_left","bbox_top","bbox_width","bbox_height"]
+                            filename (string): image name. 
+                    dim (tuple): (h, w, num_channel)
+        '''
+        objs = self.frames_objects.loc[self.frames_objects['frame_index'] == index + 1]
+        img_name = "{}.jpg".format(str(index + 1).zfill(7))
+        item = dict()
+        item['sequence'] = self.root_dir.split("/")[-1]
+        item['frameID'] = index
+        item['gt'] = list()
+>>>>>>> 180a2772bbbdca90a7b03583698d6c4bd3cc1c1c
         for index,row in objs.iterrows():
             boxes.append(row.iloc[2:6].values.tolist())
             class_id.append(row.iloc[7])
