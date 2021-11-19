@@ -166,7 +166,8 @@ VOCdevkit/
 .vscode/
 
 # Ignore the data folders
-data/
+data/*
+datasets/*
 flow/
 weights/
 tmp/

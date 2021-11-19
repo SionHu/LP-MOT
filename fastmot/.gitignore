@@ -1,0 +1,4 @@
+TensorRT-8.2.0.6
+plugins/*.so
+plugins/*.o
+models/*.trt
